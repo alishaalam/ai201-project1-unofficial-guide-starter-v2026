@@ -69,12 +69,10 @@ in at least 4 of 5 tries.
        - "No chunk is shorter than 200 characters, since anything below that
           in my corpus turned out to be a heading with no content under it." -->
 
-
+At least 4 of 5 sampled chunks contain a complete, understandable idea without cutting off important sentences, mixing unrelated topics and separating lists
 
 **Why this target:**
-
-
-
+Good chunks make retrieval more useful
 ---
 
 ## 5. Your choice
@@ -86,13 +84,20 @@ in at least 4 of 5 tries.
      handles badly, about source attribution being correct rather than merely
      present — anything, as long as it names a number or an observable
      outcome. -->
-
-
+     For at least 4 of 5 in-scope questions, every important factual claim in the answer is supported by the retrieved chunks, with no invented details.
 
 **Why this target:**
+Criterion 2 checks whether an answer names a source, but naming a source does not prove that the source supports the answer. This criterion tests whether the LLM actually stays within the evidence.
+Ex: "What do i learn in Math?"   
+  (best distance 0.600, cutoff 0.6)
 
+I do not have enough information in the provided documents to answer what you learn in Math, as the documents only describe the format, assessment, workload, and advice for MATH 220 Linear Algebra without detailing the specific topics or curriculum. 
 
+Sources: `course_math_220.txt`, `course_math_220_exams.txt`, and `course_math_220_workload.txt`
 
+Sources retrieved: course_cs_340.txt, course_hist_118.txt, course_math_220.txt, course_math_220_exams.txt, course_math_220_workload.txt
+
+1 model calls this session, 699 tokens (608 in, 91 out)
 ---
 
 <!-- ─────────────────────────────────────────────────────────────────────────
