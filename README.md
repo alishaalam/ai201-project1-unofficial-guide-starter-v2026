@@ -166,7 +166,7 @@ My in-corpus questions all landed between 0.243 and 0.525. My out-of-scope quest
      * Halden Hall (dining_halden_hall.txt)
      * The Ridgeway Café (dining_the_ridgeway_cafe.txt)
 
-**2.**
+**2.** My eval run kept crashing with a "429" error, which basically meant I was calling the API too fast. I asked why this was happening, since the code already had logic to slow down and retry when that happens. Looking at the actual error message, the real limit was 15 calls per minute — but the code was set to allow 30, so it never slowed down early enough. I fixed the number in config.py to match the real limit (15). I'd also bumped my question list up to 6 while testing something, which meant 18 calls per run instead of 15 — so I dropped it back to 5 questions too, which keeps every run safely under the limit without needing to pause at all.
 
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never
