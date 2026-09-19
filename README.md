@@ -2,54 +2,18 @@
 
 Alisha - campus_life
 
-> **This file is your submission.** Fill it in as you go — most sections get
-> written during the milestone that produces them, not at the end.
->
-> How the starter works, and every command you'll need, is in `RUNNING.md`.
-> Leave that file alone.
->
-> **Paste everything as text.** No screenshots, no video. A typed table gets
-> full credit; a picture of the same table gets none.
->
-> Delete these instruction blocks as you replace them. The `<!-- -->` comments
-> are notes to you and don't show up when the page renders — you can leave them
-> or remove them.
-
----
-
 # Unit 1
 
-## What This Does
-
-<!-- I've picked campus life, because these are the questions and answers generally not on a school/university's marketing material and has community knowledge. Also this was one the large corpus allowing a range and variety in questions.
-     Milestone 5. -->
+I've picked campus life, because these are the questions and answers generally not on a school/university's marketing material and has community knowledge. Also this was one the large corpus allowing a range and variety in questions.
 
 ## Chunking Strategy
 
-**Chunk size:**
-**Overlap:**
+**Chunk size:** 800
+**Overlap:** 120
 
-<!-- What about YOUR documents made you pick these numbers? Short posts and
-     long sectioned guides don't want the same chunking, and "800 seemed
-     reasonable" earns nothing. Point at something you noticed when you read
-     the documents in Milestone 1.
-
-     If you changed your mind partway through, say so and say why. That's worth
-     more than pretending you got it right first time.
-
-     Milestone 3. -->
+These numbers allowed me to read each documenmt as one chunk without causing truncation or excessive overlap.
 
 ## Sample Chunks
-
-<!-- Five chunks, pasted as text. Label each one and name the file it came from
-     AND the function that produced it — the grader checks your code against
-     what you claim here.
-
-     `python app.py chunks -n 5` prints all three for you. Copy them straight
-     across.
-
-     Milestone 3. -->
-
 
 88 chunks total. Showing 5, spread across the corpus.
 Chunk 1  |  source: admin_add_drop_deadline.txt#0  |  produced by: chunker.py::split_documents
@@ -59,7 +23,6 @@ On the add/drop deadline
 You can add a course through the end of the second week. Dropping is a longer window — through the end of week six — but a drop after week two shows as a W on your transcript. Nothing anywhere on the registrar's site says this plainly, and students find out from each other.
 
 Chunk 2  |  source: course_biol_160.txt#0  |  produced by: chunker.py::split_documents
-
 [Category: Course]
 BIOL 160 Cell Biology
 
@@ -70,7 +33,6 @@ Expect 9 to 11 hours a week, the heaviest first-year course by reputation.
 The one piece of advice: the unit tests come fast, roughly every three weeks; falling behind once is very hard to recover from.
 
 Chunk 3  |  source: course_hist_118_workload.txt#0  |  produced by: chunker.py::split_documents
-
 [Category: Course]
 Workload for HIST 118 Modern World History
 
@@ -116,7 +78,7 @@ How much does laundry cost in Aldridge Hall?
 ```
 ```
 
-**My relevance cutoff:**
+**My relevance cutoff:**0.6
 
 <!-- The number you set in config.py, and how you got there.
 
@@ -126,8 +88,6 @@ How much does laundry cost in Aldridge Hall?
      here — the table below wants all ten rows.
 
      Milestone 4. -->
-
-My relevance cutoff: 0.6
 
 My in-corpus questions all landed between 0.243 and 0.525. My out-of-scope questions all landed between 0.826 and 0.916. That's a clean gap of about 0.30 with nothing from either group inside it, so any cutoff between 0.525 and 0.826 would have separated all ten perfectly.
 
@@ -147,10 +107,6 @@ My in-corpus questions all landed between 0.243 and 0.525. My out-of-scope quest
 
 ## How I Used AI
 
-<!-- Two specific moments. For each: what you asked for, what came back, and
-     what you changed about it.
-      Milestone 5. -->
-**1.**
      1. The chunker was confusing dining and residence halls so I used a strategy to categorize the chunks by adding a label at the top.
      Query - List places to eat on campus 
      Original response without categorization returned only Halden Hall & Pellew. With the new chunker I got the response as:
@@ -159,7 +115,7 @@ My in-corpus questions all landed between 0.243 and 0.525. My out-of-scope quest
      * Halden Hall (dining_halden_hall.txt)
      * The Ridgeway Café (dining_the_ridgeway_cafe.txt)
 
-**2.** My eval run kept crashing with a "429" error, which basically meant I was calling the API too fast. I asked why this was happening, since the code already had logic to slow down and retry when that happens. Looking at the actual error message, the real limit was 15 calls per minute — but the code was set to allow 30, so it never slowed down early enough. I fixed the number in config.py to match the real limit (15). I'd also bumped my question list up to 6 while testing something, which meant 18 calls per run instead of 15 — so I dropped it back to 5 questions too, which keeps every run safely under the limit without needing to pause at all.
+2. My eval run kept crashing with a "429" error, which basically meant I was calling the API too fast. I asked why this was happening, since the code already had logic to slow down and retry when that happens. Looking at the actual error message, the real limit was 15 calls per minute — but the code was set to allow 30, so it never slowed down early enough. I fixed the number in config.py to match the real limit (15). I'd also bumped my question list up to 6 while testing something, which meant 18 calls per run instead of 15 — so I dropped it back to 5 questions too, which keeps every run safely under the limit without needing to pause at all.
 
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never
