@@ -52,18 +52,14 @@ Alisha - campus_life
 
 
 88 chunks total. Showing 5, spread across the corpus.
-
-======================================================================
 Chunk 1  |  source: admin_add_drop_deadline.txt#0  |  produced by: chunker.py::split_documents
-======================================================================
 [Category: Admin]
 On the add/drop deadline
 
 You can add a course through the end of the second week. Dropping is a longer window — through the end of week six — but a drop after week two shows as a W on your transcript. Nothing anywhere on the registrar's site says this plainly, and students find out from each other.
 
-======================================================================
 Chunk 2  |  source: course_biol_160.txt#0  |  produced by: chunker.py::split_documents
-======================================================================
+
 [Category: Course]
 BIOL 160 Cell Biology
 
@@ -73,9 +69,8 @@ Expect 9 to 11 hours a week, the heaviest first-year course by reputation.
 
 The one piece of advice: the unit tests come fast, roughly every three weeks; falling behind once is very hard to recover from.
 
-======================================================================
 Chunk 3  |  source: course_hist_118_workload.txt#0  |  produced by: chunker.py::split_documents
-======================================================================
+
 [Category: Course]
 Workload for HIST 118 Modern World History
 
@@ -83,9 +78,9 @@ People keep asking so: a lot of reading, about 120 pages a week, but no problem 
 
 It's front-loaded — the first month is heavier than the rest, partly because you're learning the format.
 
-======================================================================
+
 Chunk 4  |  source: dining_pellew_dining_hall_followup.txt#0  |  produced by: chunker.py::split_documents
-======================================================================
+
 [Category: Dining]
 Re: Pellew Dining Hall
 
@@ -93,9 +88,9 @@ Adding to what people have said about Pellew Dining Hall. The wait figure of 12 
 
 Also worth saying: the furthest hall from anywhere, next to the athletics centre. Nobody tells you this at orientation.
 
-======================================================================
+
 Chunk 5  |  source: housing_innisfree_hall.txt#0  |  produced by: chunker.py::split_documents
-======================================================================
+
 [Category: Housing]
 Innisfree Hall — what it's actually like
 
@@ -110,8 +105,7 @@ Laundry costs $1.75 wash, $1.75 dry, app-based. On noise: moderate; the building
 ## Sample Answer
 
 <!-- One complete question and answer, pasted as text, with the source line
-     visible. Milestone 4. -->
-     
+     visible. Milestone 4. -->     
 
 **Question:**
 How much does laundry cost in Aldridge Hall?
@@ -171,9 +165,7 @@ My in-corpus questions all landed between 0.243 and 0.525. My out-of-scope quest
      Doing one? Say so here BEFORE you start. A feature this README never
      claims earns nothing.
      ───────────────────────────────────────────────────────────────────────── -->
-
 ---
-
 # Unit 2
 
 <!-- These sections get ADDED to what's already above. Don't delete or rewrite
