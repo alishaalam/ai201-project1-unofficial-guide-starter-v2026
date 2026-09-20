@@ -282,7 +282,7 @@ Rules:
 - Be brief. Two or three sentences is usually enough."""
 
 
-def build_prompt(question: str, results) -> str:
+def build_prompt(question: str, results, history: list[dict] | None = None) -> str:
     """
     Assemble the grounded prompt out of retrieved chunks.
 
@@ -290,18 +290,34 @@ def build_prompt(question: str, results) -> str:
     being sent — `python app.py ask "..." --show-prompt` prints exactly what
     this returns. Reading it once is the fastest way to see that retrieval,
     not the model, decides what an answer can possibly be based on.
+
+    `question` here is the *original* wording, not the standalone question
+    `rewrite_query` produced for retrieval — the model answering should see
+    what was actually asked, and the raw conversation around it, so a reply
+    to "what about the noise?" can sound like a continuation instead of a
+    fresh answer to a question nobody asked out loud. `history` is capped by
+    the caller (`config.HISTORY_TURNS`), same as the rewrite step, so a long
+    conversation doesn't grow this prompt without bound.
     """
     context = "\n\n".join(
         f"[from {r.source}]\n{r.text}" for r in results
     )
+    convo = ""
+    if history:
+        turns = "\n".join(
+            f"Q: {turn['question']}\nA: {turn['answer']}" for turn in history
+        )
+        convo = f"Conversation so far:\n{turns}\n\n"
     return (
-        f"Documents:\n\n{context}\n\n"
+        f"{convo}Documents:\n\n{context}\n\n"
         f"---\n\nQuestion: {question}\n\n"
         f"Answer using only the documents above, and name the file you used."
     )
 
 
-def answer_from_chunks(question: str, results, cache: bool = True) -> str:
+def answer_from_chunks(
+    question: str, results, history: list[dict] | None = None, cache: bool = True
+) -> str:
     """
     Build a grounded prompt out of retrieved chunks and send it.
 
@@ -309,5 +325,59 @@ def answer_from_chunks(question: str, results, cache: bool = True) -> str:
     first — it has already decided these chunks are close enough to be worth
     answering from.
     """
-    prompt = build_prompt(question, results)
+    prompt = build_prompt(question, results, history=history)
     return generate(prompt, system=GROUNDING_INSTRUCTION, cache=cache)
+
+
+# ─── Conversational memory ───────────────────────────────────────────────────
+
+REWRITE_INSTRUCTION = """You turn a follow-up question into a standalone one, using the conversation before it.
+
+Rules:
+- If the question already stands on its own, return it completely unchanged.
+- Resolve pronouns and implicit references ("it", "there", "that one") using the conversation.
+- Output only the rewritten question. No preamble, no quotes, no explanation."""
+
+
+def build_rewrite_prompt(question: str, history: list[dict]) -> str:
+    """Assemble the prompt that turns a follow-up into a standalone question."""
+    turns = "\n".join(
+        f"Q: {turn['question']}\nA: {turn['answer']}" for turn in history
+    )
+    return (
+        f"Conversation so far:\n{turns}\n\n"
+        f"Follow-up question: {question}\n\n"
+        f"Standalone question:"
+    )
+
+
+def rewrite_query(question: str, history: list[dict], cache: bool = True) -> str:
+    """
+    Turn a follow-up question into a standalone one, using recent history.
+
+    This is what makes conversational memory work for *retrieval*, not just
+    the final answer. "What about the noise?" embeds to something generic on
+    its own; "What's the noise like in Innisfree Hall?" retrieves the right
+    chunk. That rewrite costs one extra model call — skipped entirely when
+    there's no history, so a plain one-off question never pays for it.
+
+    Only the last `config.HISTORY_TURNS` turns are used, so a long-running
+    conversation costs the same per turn as a short one instead of growing
+    the prompt without bound.
+
+    Falls back to the raw question on any failure — rate limit exhausted,
+    quota guard tripped, no API key. This call is an optimization on top of
+    retrieval, not retrieval itself; a worse (unrewritten) query still
+    searches, while a hard failure here would end the conversation on every
+    follow-up the moment the limiter had anything to say about it.
+    """
+    if not history:
+        return question
+
+    recent = history[-config.HISTORY_TURNS :]
+    prompt = build_rewrite_prompt(question, recent)
+    try:
+        rewritten = generate(prompt, system=REWRITE_INSTRUCTION, cache=cache).strip()
+    except Exception:  # noqa: BLE001 — a worse query beats no answer at all
+        return question
+    return rewritten or question

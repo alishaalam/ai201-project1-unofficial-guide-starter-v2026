@@ -226,8 +226,10 @@ def ask_pipeline(
     threshold=None,
     source=None,
     category=None,
+    history=None,
     on_gate=None,
     on_prompt=None,
+    on_rewrite=None,
 ):
     """Retrieve, gate, answer. Returns the outcome and prints nothing.
 
@@ -238,18 +240,39 @@ def ask_pipeline(
     when to refuse would be a second cutoff you'd have to keep in step with
     this one, and it would drift.
 
-    The two optional callbacks let the command line print as it goes without
-    this function knowing anything about printing: `on_gate` is handed the gate
-    decision as soon as it's made, and `on_prompt` is handed the assembled
-    prompt just before it goes out — that's how `--show-prompt` shows you the
-    prompt while the model is still thinking rather than after.
+    `history` is a list of `{"question": ..., "answer": ...}` dicts, oldest
+    first. When it's non-empty, retrieval and generation get different
+    inputs on purpose: the question is rewritten into a standalone one
+    (`generate.py::rewrite_query`) before it's embedded for search — a
+    follow-up like "what about the noise?" would otherwise retrieve on
+    "noise" alone and lose the document it was actually about — but the
+    model that writes the final answer sees the *real* question and the raw
+    conversation (`generate.py::build_prompt`), so it can answer like it's
+    continuing a conversation instead of a fresh, disconnected question.
+    Callers own storing history across turns; this function only reads it.
+
+    The three optional callbacks let the command line print as it goes
+    without this function knowing anything about printing: `on_rewrite` is
+    handed the standalone question if one was produced, `on_gate` is handed
+    the gate decision as soon as it's made, and `on_prompt` is handed the
+    assembled prompt just before it goes out — that's how `--show-prompt`
+    shows you the prompt while the model is still thinking rather than after.
     """
     from store import search
     import gate
-    from generate import answer_from_chunks, build_prompt
+    from generate import answer_from_chunks, build_prompt, rewrite_query
+
+    # Capped once, here, so every downstream use — the rewrite call and the
+    # answer prompt alike — sees the same bounded window. A caller handing in
+    # an ever-growing transcript still costs the same per turn.
+    history = (history or [])[-config.HISTORY_TURNS :]
+
+    search_question = rewrite_query(question, history)
+    if on_rewrite is not None and search_question != question:
+        on_rewrite(search_question)
 
     results = search(
-        question,
+        search_question,
         top_k=top_k or config.TOP_K,
         corpus=corpus or config.CORPUS,
         variant=variant,
@@ -262,6 +285,7 @@ def ask_pipeline(
 
     outcome = {
         "question": question,
+        "search_question": search_question,
         "refused": not decision.passed,
         "best_distance": decision.best_distance,
         "threshold": decision.threshold,
@@ -273,12 +297,17 @@ def ask_pipeline(
         outcome["answer"] = gate.REFUSAL
         return outcome
 
-    prompt = build_prompt(question, results)
+    # Retrieval used the rewritten, standalone question — it has to, since
+    # the vector index has no idea what "it" or "there" refers to. The answer
+    # call gets the real question and the real conversation instead, so a
+    # reply to "what about the noise?" can read as a continuation rather than
+    # a fresh answer to a question that was never actually asked out loud.
+    prompt = build_prompt(question, results, history=history)
     if on_prompt is not None:
         on_prompt(prompt)
 
     outcome["prompt"] = prompt
-    outcome["answer"] = answer_from_chunks(question, results)
+    outcome["answer"] = answer_from_chunks(question, results, history=history)
     outcome["sources"] = sorted({r.source for r in results})
     return outcome
 
@@ -291,11 +320,15 @@ def _ask_one(
     threshold,
     source=None,
     category=None,
+    history=None,
     show_distances=True,
     show_prompt=False,
 ):
     import gate
     from generate import GROUNDING_INSTRUCTION
+
+    def print_rewrite(search_question):
+        print(f"  (interpreting as: {search_question})")
 
     def print_distances(decision):
         best = f"{decision.best_distance:.3f}"
@@ -320,6 +353,8 @@ def _ask_one(
         threshold=threshold,
         source=source,
         category=category,
+        history=history,
+        on_rewrite=print_rewrite if show_distances else None,
         on_gate=print_distances if show_distances else None,
         on_prompt=print_prompt if show_prompt else None,
     )
@@ -339,6 +374,10 @@ def cmd_ask(args):
 
     source = _resolve_filter(args.source, "source", corpus)
     category = _resolve_filter(args.category, "category", corpus)
+
+    # Conversational memory only makes sense within one interactive session —
+    # each separate `python app.py ask "..."` process starts with none.
+    history: list[dict] = []
 
     try:
         if args.question:
@@ -362,7 +401,7 @@ def cmd_ask(args):
                     break
                 if not question:
                     break
-                _ask_one(
+                answer = _ask_one(
                     question,
                     corpus,
                     args.variant,
@@ -370,8 +409,10 @@ def cmd_ask(args):
                     args.threshold,
                     source=source,
                     category=category,
+                    history=history,
                     show_prompt=args.show_prompt,
                 )
+                history.append({"question": question, "answer": answer})
     finally:
         print(gen.usage())
 

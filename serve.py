@@ -63,6 +63,37 @@ def health():
     )
 
 
+def _parse_history(payload):
+    """
+    Pull `history` off the request body, or reject it clearly.
+
+    This service is stateless — it keeps no session of its own — so a
+    conversation has to be handed back on every request. The caller owns
+    storing it; this only validates the shape: a list of
+    `{"question": ..., "answer": ...}` objects, oldest first. Only the most
+    recent `config.HISTORY_TURNS` are ever used (see
+    `generate.py::rewrite_query`), so a client is free to send the whole
+    transcript without it costing more per request.
+    """
+    raw = payload.get("history")
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError('"history" has to be a list of {"question", "answer"} objects')
+
+    history = []
+    for turn in raw:
+        if not isinstance(turn, dict) or "question" not in turn or "answer" not in turn:
+            raise ValueError(
+                'Each history entry needs a "question" and an "answer", like '
+                '{"question": "...", "answer": "..."}'
+            )
+        history.append(
+            {"question": str(turn["question"]), "answer": str(turn["answer"])}
+        )
+    return history
+
+
 @app.post("/ask")
 def ask():
     """One question in, one grounded answer out.
@@ -90,14 +121,21 @@ def ask():
     try:
         source = _resolve_filter(payload.get("source"), "source", config.CORPUS)
         category = _resolve_filter(payload.get("category"), "category", config.CORPUS)
+        history = _parse_history(payload)
     except SystemExit as exc:
         # _resolve_filter raises SystemExit for the CLI's benefit; over HTTP
         # that would kill the whole process instead of answering one request.
         return jsonify({"error": str(exc)}), 400
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     try:
         outcome = ask_pipeline(
-            question, corpus=config.CORPUS, source=source, category=category
+            question,
+            corpus=config.CORPUS,
+            source=source,
+            category=category,
+            history=history,
         )
     except Exception as exc:  # noqa: BLE001 — a reader gets this, not a traceback
         return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
@@ -105,6 +143,7 @@ def ask():
     return jsonify(
         {
             "question": question,
+            "search_question": outcome["search_question"],
             "answer": outcome["answer"],
             "refused": outcome["refused"],
             "sources": outcome["sources"],

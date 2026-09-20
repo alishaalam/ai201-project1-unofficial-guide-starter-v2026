@@ -46,6 +46,23 @@ TOP_K = 7               # how many chunks to pull back per question
 THRESHOLD = 0.6
 
 
+# ─── Conversational memory (stretch) ─────────────────────────────────────────
+# History feeds two different calls, capped to this many of the most recent
+# turns for both:
+#   1. A follow-up question gets rewritten into a standalone one before it's
+#      embedded for search (generate.py::rewrite_query) — an extra model call
+#      per follow-up, so it counts against REQUESTS_PER_MINUTE and
+#      SESSION_REQUEST_BUDGET below.
+#   2. The real conversation (not the rewritten question) goes into the final
+#      answer prompt (generate.py::build_prompt), so the model can answer
+#      like it's continuing a conversation.
+# Turns beyond this many are dropped, not summarized, so both the extra call
+# and the answer prompt stay the same size no matter how long a conversation
+# runs.
+
+HISTORY_TURNS = 3
+
+
 # ─── Models ──────────────────────────────────────────────────────────────────
 # Embeddings run on your own machine and cost no API quota.
 # Only generation calls out to a service.
