@@ -119,6 +119,8 @@ My in-corpus questions all landed between 0.243 and 0.525. My out-of-scope quest
 
 3. I added the metadata filtering stretch feature (below) with Claude's help. My question going in was "how do I let people narrow results by source or date." Claude pointed out I already had a `category` signal — the `[Category: Dining]` prefix the chunker adds — but it only lived inside the chunk text, not as its own metadata field, so it couldn't be filtered on. It also flagged that none of my corpus files carry any real date, so a date filter would be filtering on a fake signal (file modification time) rather than anything meaningful — I decided to skip date and ship source + category instead. The other thing I wouldn't have caught myself: Chroma's `where` clause matches metadata silently — a typo'd filename just returns zero rows, which looks identical to the relevance gate refusing the question. Claude added a validation step (`app.py::_resolve_filter`) that checks the value against what the corpus actually has before searching, so a bad filter now fails with the real reason instead of masquerading as "no answer."
 
+4. I asked how to add conversational memory (below) "the right way, the way a real system would do it." The design that came back used two model calls — rewrite the follow-up into a standalone question for retrieval, then answer using the real conversation — because retrieval and generation need different inputs: the vector index has no idea what "it" refers to, but the model writing the answer should see the actual conversation so it doesn't sound like a fresh, disconnected reply. What got built the first pass was a simplified version of that — the rewritten question fed *both* retrieval and the final answer, dropping the raw conversation entirely. I didn't catch that myself; Claude flagged the deviation unprompted at the end of its own implementation summary, and I asked for the original two-input design instead. Fixing it surfaced a second, smaller bug in the same area: my `HISTORY_TURNS` cap in `config.py` was only being applied inside the rewrite call, not to the history now also going into the final answer prompt — so a long conversation would have grown that prompt, and its cost, without bound, despite the config comment next to it claiming otherwise. That got caught and fixed in the same pass, not because I asked for it directly, but because asking for the redesign exposed it.
+
 ## Stretch Features
 
 ### Metadata filtering — narrow by source or category
@@ -148,6 +150,34 @@ Both flags accept a comma-separated list (`--source a.txt,b.txt`) or, over the A
 - **Valid filter, gate still refuses** — filtering can shrink the candidate pool below what the gate would normally see. If the best distance in the *filtered* pool is still over the threshold, the gate refuses exactly like it does today — filtering narrows what's searched, not the relevance bar an answer has to clear.
 - **`ask` vs. `retrieve`** — both commands and the `/ask` endpoint validate and apply filters the same way, so a bad value fails the same way everywhere instead of differently in the CLI vs. the API.
 - **Over HTTP specifically** — an unknown value raises the same validation error the CLI raises, but `serve.py` catches it and returns `400` with the message in JSON, instead of the CLI's `SystemExit` taking down the whole running service.
+
+### Conversational memory — follow-ups build on the last question
+
+A follow-up question like "what about the noise?" can now be asked right after "how much does laundry cost in Innisfree Hall?" and both retrieval and the answer stay correctly scoped to Innisfree Hall, instead of the follow-up being searched and answered as if it arrived with no context at all.
+
+**How it works — two inputs doing two different jobs:**
+- **Retrieval** gets a *rewritten, standalone* version of the question (`generate.py::rewrite_query`) — one extra model call that turns "what about the noise?" into "what's the noise like in Innisfree Hall?" before it's embedded and searched. The vector index has no memory of its own; it only ever sees the exact string it's handed, so if that string doesn't carry the context, nothing downstream can recover it.
+- **The final answer** gets the *real* question plus the raw conversation (`generate.py::build_prompt`'s new "Conversation so far" block), so the model writes a reply that reads like it's continuing a conversation rather than answering a fresh, disconnected question.
+
+**Commands, before and after:**
+
+| Before | After |
+|---|---|
+| `python app.py ask` → one question, then quit | `python app.py ask` → keep going; each later question can build on the one before it, automatically |
+| `curl -d '{"question": "..."}' /ask` | `curl -d '{"question": "...", "history": [{"question": "...", "answer": "..."}]}' /ask` |
+
+Over the CLI this needs nothing extra from you — the interactive loop already keeps history and feeds it back in. Over HTTP the server stays stateless on purpose, matching `serve.py`'s existing no-session design, so the **caller** sends the transcript back on each request instead of the server remembering it.
+
+**Null / no history (the default case):** a one-off question — `python app.py ask "..."` or any `/ask` call with no `history` key — never triggers a rewrite call. `rewrite_query` returns the question completely unchanged when history is empty, so a plain question still costs exactly one model call, same as before this feature existed.
+
+**Edge cases handled:**
+
+- **First turn of a conversation** — no history yet, so no rewrite call. Not an edge case handled defensively so much as the common case: every conversation starts here, and a rewrite call with nothing to condense would be pure waste on every single session's first question.
+- **The rewrite call itself fails** (rate limit, quota guard tripped, no API key) — falls back to the raw question instead of failing the whole turn. Verified by forcing `generate()` to raise and confirming `rewrite_query` returns the original question rather than propagating the error — a worse retrieval beats no answer at all.
+- **Unbounded conversations** — `config.HISTORY_TURNS` (3) caps how many past turns feed *both* the rewrite call and the final answer prompt, so a 20-turn conversation costs the same per turn as a 2-turn one. (This is the bug described in How I Used AI, entry 4 — originally only the rewrite call was capped.)
+- **Malformed history over HTTP** — `serve.py::_parse_history` checks the shape (a list of `{"question", "answer"}` objects) and returns a clean `400` if a client sends the wrong shape, instead of a `500` or a crash.
+- **Combined with metadata filtering** — `--source`/`--category` still apply to the *rewritten* retrieval query, not the raw follow-up, so filtering and following up work together correctly.
+- **Answer-referential follow-ups — a known gap, not something this handles:** "summarize that" or "which of those is cheapest," where the follow-up depends on the model's *previous answer* rather than the previous question, doesn't work. The rewrite step only ever sees Q&A pairs as text to condense into a new question — it has nothing to point back at literally.
 
 ---
 # Unit 2
