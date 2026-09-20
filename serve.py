@@ -71,7 +71,7 @@ def ask():
     system working — it is an answer, and the JSON says so with
     `"refused": true` so whatever calls this can tell the two apart.
     """
-    from app import ask_pipeline
+    from app import ask_pipeline, _resolve_filter
 
     payload = request.get_json(silent=True) or {}
     question = (payload.get("question") or "").strip()
@@ -88,7 +88,17 @@ def ask():
         )
 
     try:
-        outcome = ask_pipeline(question, corpus=config.CORPUS)
+        source = _resolve_filter(payload.get("source"), "source", config.CORPUS)
+        category = _resolve_filter(payload.get("category"), "category", config.CORPUS)
+    except SystemExit as exc:
+        # _resolve_filter raises SystemExit for the CLI's benefit; over HTTP
+        # that would kill the whole process instead of answering one request.
+        return jsonify({"error": str(exc)}), 400
+
+    try:
+        outcome = ask_pipeline(
+            question, corpus=config.CORPUS, source=source, category=category
+        )
     except Exception as exc:  # noqa: BLE001 — a reader gets this, not a traceback
         return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
 

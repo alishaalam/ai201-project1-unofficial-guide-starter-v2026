@@ -36,10 +36,16 @@ class Chunk:
     source: str        # which file it came from
     index: int         # which chunk within that file, starting at 0
     produced_by: str   # the function that made it — cite this in your README
+    category: str      # e.g. "Dining" — derived from the filename, used for metadata filtering
 
     @property
     def label(self) -> str:
         return f"{self.source}#{self.index}"
+
+
+def _category_from_source(source: str) -> str:
+    """The category label for a filename, e.g. 'dining_kestrel_commons.txt' -> 'Dining'."""
+    return source.split("_")[0].replace("-", " ").title()
 
 
 def fallback_split(
@@ -61,6 +67,7 @@ def fallback_split(
 
     chunks: list[Chunk] = []
     for doc in documents:
+        category = _category_from_source(doc.source)
         start = 0
         index = 0
         while start < len(doc.text):
@@ -72,6 +79,7 @@ def fallback_split(
                         source=doc.source,
                         index=index,
                         produced_by="chunker.py::fallback_split",
+                        category=category,
                     )
                 )
                 index += 1
@@ -98,7 +106,7 @@ def split_documents(documents: list[Document]) -> list[Chunk]:
     """
     chunks: list[Chunk] = []
     for doc in documents:
-        category = doc.source.split("_")[0].replace("-", " ").title()
+        category = _category_from_source(doc.source)
         text = f"[Category: {category}]\n{doc.text}"
         chunks.append(
             Chunk(
@@ -106,6 +114,7 @@ def split_documents(documents: list[Document]) -> list[Chunk]:
                 source=doc.source,
                 index=0,
                 produced_by="chunker.py::split_documents",
+                category=category,
             )
         )
     return chunks

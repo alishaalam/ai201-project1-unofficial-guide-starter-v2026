@@ -82,6 +82,37 @@ def _chunks_from_doc(chunks, wanted):
     return sorted(matches, key=lambda c: c.index)
 
 
+def _resolve_filter(spec, field, corpus):
+    """
+    Validate a --source/--category value against what the corpus actually has.
+
+    Chroma's `where` clause silently returns zero rows for a value that
+    doesn't exist — a typo'd filename looks identical to the relevance gate
+    refusing. Checking here turns that into a clear error instead of a
+    confusing "no answer".
+    """
+    if not spec:
+        return None
+
+    from ingest import load_documents
+    from chunker import split_documents
+
+    chunks = split_documents(load_documents(corpus))
+    known = sorted({getattr(c, field) for c in chunks})
+
+    if isinstance(spec, str):
+        wanted = [piece.strip() for piece in spec.split(",") if piece.strip()]
+    else:
+        wanted = [str(piece).strip() for piece in spec if str(piece).strip()]
+    unknown = [w for w in wanted if w not in known]
+    if unknown:
+        raise SystemExit(
+            f"Unknown {field}: {', '.join(unknown)}. This corpus has:\n  "
+            + "\n  ".join(known)
+        )
+    return wanted
+
+
 def _chunks_at(chunks, spec):
     """Chunks at the exact positions given, e.g. --indices 0,4,8,12,16."""
     try:
@@ -149,15 +180,27 @@ def cmd_retrieve(args):
     from store import search
     import gate
 
+    corpus = args.corpus or config.CORPUS
+    source = _resolve_filter(args.source, "source", corpus)
+    category = _resolve_filter(args.category, "category", corpus)
+
     results = search(
         args.question,
         top_k=args.top_k or config.TOP_K,
-        corpus=args.corpus or config.CORPUS,
+        corpus=corpus,
         variant=args.variant,
+        source=source,
+        category=category,
     )
 
     if not results:
-        print("Nothing came back. Have you run `python app.py index`?")
+        if source or category:
+            print(
+                "Nothing came back. --source and --category are valid on their "
+                "own, but this combination matches no chunks at all."
+            )
+        else:
+            print("Nothing came back. Have you run `python app.py index`?")
         return
 
     print(f"\nQuestion: {args.question}\n")
@@ -181,6 +224,8 @@ def ask_pipeline(
     variant="default",
     top_k=None,
     threshold=None,
+    source=None,
+    category=None,
     on_gate=None,
     on_prompt=None,
 ):
@@ -208,6 +253,8 @@ def ask_pipeline(
         top_k=top_k or config.TOP_K,
         corpus=corpus or config.CORPUS,
         variant=variant,
+        source=source,
+        category=category,
     )
     decision = gate.check(results, threshold=threshold)
     if on_gate is not None:
@@ -242,6 +289,8 @@ def _ask_one(
     variant,
     top_k,
     threshold,
+    source=None,
+    category=None,
     show_distances=True,
     show_prompt=False,
 ):
@@ -269,6 +318,8 @@ def _ask_one(
         variant=variant,
         top_k=top_k,
         threshold=threshold,
+        source=source,
+        category=category,
         on_gate=print_distances if show_distances else None,
         on_prompt=print_prompt if show_prompt else None,
     )
@@ -286,6 +337,9 @@ def cmd_ask(args):
     corpus = args.corpus or config.CORPUS
     import generate as gen
 
+    source = _resolve_filter(args.source, "source", corpus)
+    category = _resolve_filter(args.category, "category", corpus)
+
     try:
         if args.question:
             _ask_one(
@@ -294,6 +348,8 @@ def cmd_ask(args):
                 args.variant,
                 args.top_k,
                 args.threshold,
+                source=source,
+                category=category,
                 show_prompt=args.show_prompt,
             )
         else:
@@ -312,6 +368,8 @@ def cmd_ask(args):
                     args.variant,
                     args.top_k,
                     args.threshold,
+                    source=source,
+                    category=category,
                     show_prompt=args.show_prompt,
                 )
     finally:
@@ -360,12 +418,28 @@ def build_parser():
     p_ret = sub.add_parser("retrieve", help="show distances only (Milestone 4)")
     p_ret.add_argument("question")
     p_ret.add_argument("--top-k", type=int)
+    p_ret.add_argument(
+        "--source", metavar="FILE[,FILE]", help="only search chunks from these files"
+    )
+    p_ret.add_argument(
+        "--category",
+        metavar="NAME[,NAME]",
+        help="only search chunks in these categories (e.g. Dining)",
+    )
     p_ret.set_defaults(func=cmd_retrieve)
 
     p_ask = sub.add_parser("ask", help="ask a question")
     p_ask.add_argument("question", nargs="?")
     p_ask.add_argument("--top-k", type=int)
     p_ask.add_argument("--threshold", type=float, help="override the gate cutoff")
+    p_ask.add_argument(
+        "--source", metavar="FILE[,FILE]", help="only search chunks from these files"
+    )
+    p_ask.add_argument(
+        "--category",
+        metavar="NAME[,NAME]",
+        help="only search chunks in these categories (e.g. Dining)",
+    )
     p_ask.add_argument(
         "--show-prompt",
         action="store_true",

@@ -42,6 +42,7 @@ class Result:
     label: str
     distance: float   # LOWER IS BETTER. 0.3 is close, 0.9 is unrelated.
     produced_by: str
+    category: str
 
 
 _model = None
@@ -170,7 +171,12 @@ def build_index(
             documents=[c.text for c in window],
             embeddings=embed([c.text for c in window]),
             metadatas=[
-                {"source": c.source, "index": c.index, "produced_by": c.produced_by}
+                {
+                    "source": c.source,
+                    "index": c.index,
+                    "produced_by": c.produced_by,
+                    "category": c.category,
+                }
                 for c in window
             ],
         )
@@ -178,14 +184,47 @@ def build_index(
     return len(chunks)
 
 
+def _build_where(
+    source: str | list[str] | None,
+    category: str | list[str] | None,
+) -> dict | None:
+    """
+    Turn `source`/`category` filters into a Chroma `where` clause.
+
+    Each of `source` and `category` matches by exact metadata value, not
+    substring — a partial filename or category won't match anything. A single
+    string filters on that one value; a list filters on any of several
+    (`$in`). Both together are combined with `$and`.
+    """
+    conditions = []
+    for field, value in (("source", source), ("category", category)):
+        if not value:
+            continue
+        values = [value] if isinstance(value, str) else list(value)
+        conditions.append(
+            {field: values[0]} if len(values) == 1 else {field: {"$in": values}}
+        )
+
+    if not conditions:
+        return None
+    return {"$and": conditions} if len(conditions) > 1 else conditions[0]
+
+
 def search(
     question: str,
     top_k: int | None = None,
     corpus: str | None = None,
     variant: str = "default",
+    source: str | list[str] | None = None,
+    category: str | list[str] | None = None,
 ) -> list[Result]:
     """
     Retrieve the chunks closest in meaning to a question.
+
+    `source` and `category` narrow the search to matching metadata before
+    ranking by distance — e.g. `category="Dining"` only ever considers dining
+    chunks, so `top_k` results come from that subset, not padded out with
+    whatever else was closest overall.
 
     Returns them nearest-first, each with its distance.
     """
@@ -202,6 +241,7 @@ def search(
     raw = collection.query(
         query_embeddings=embed([question]),
         n_results=min(top_k, collection.count()),
+        where=_build_where(source, category),
     )
 
     results: list[Result] = []
@@ -215,6 +255,7 @@ def search(
                 label=f"{meta.get('source', 'unknown')}#{meta.get('index', 0)}",
                 distance=float(distance),
                 produced_by=str(meta.get("produced_by", "unknown")),
+                category=str(meta.get("category", "unknown")),
             )
         )
     return results

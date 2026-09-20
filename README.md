@@ -117,10 +117,38 @@ My in-corpus questions all landed between 0.243 and 0.525. My out-of-scope quest
 
 2. My eval run kept crashing with a "429" error, which basically meant I was calling the API too fast. I asked why this was happening, since the code already had logic to slow down and retry when that happens. Looking at the actual error message, the real limit was 15 calls per minute — but the code was set to allow 30, so it never slowed down early enough. I fixed the number in config.py to match the real limit (15). I'd also bumped my question list up to 6 while testing something, which meant 18 calls per run instead of 15 — so I dropped it back to 5 questions too, which keeps every run safely under the limit without needing to pause at all.
 
-<!-- ── Stretch features ─────────────────────────────────────────────────────
-     Doing one? Say so here BEFORE you start. A feature this README never
-     claims earns nothing.
-     ───────────────────────────────────────────────────────────────────────── -->
+3. I added the metadata filtering stretch feature (below) with Claude's help. My question going in was "how do I let people narrow results by source or date." Claude pointed out I already had a `category` signal — the `[Category: Dining]` prefix the chunker adds — but it only lived inside the chunk text, not as its own metadata field, so it couldn't be filtered on. It also flagged that none of my corpus files carry any real date, so a date filter would be filtering on a fake signal (file modification time) rather than anything meaningful — I decided to skip date and ship source + category instead. The other thing I wouldn't have caught myself: Chroma's `where` clause matches metadata silently — a typo'd filename just returns zero rows, which looks identical to the relevance gate refusing the question. Claude added a validation step (`app.py::_resolve_filter`) that checks the value against what the corpus actually has before searching, so a bad filter now fails with the real reason instead of masquerading as "no answer."
+
+## Stretch Features
+
+### Metadata filtering — narrow by source or category
+
+Retrieval can now be scoped to specific document(s) or a whole category before ranking by distance, instead of always searching every chunk in the corpus.
+
+**What counts as a category:** the same label the chunker already derives from each filename (e.g. `dining_halden_hall.txt` → `Dining`). It used to only exist as text baked into the chunk (`[Category: Dining]`, for the embedding model's benefit); it's now also stored as its own Chroma metadata field, so it's filterable.
+
+**How it works:** `store.py::search` takes optional `source=` and `category=` arguments and turns them into a Chroma `where` clause (`store.py::_build_where`). Chroma restricts the candidate set to matching chunks *before* ranking, so `--category Dining --top-k 5` returns the 5 closest dining chunks, not the 5 closest chunks overall with non-dining ones crowded out.
+
+**Commands, before and after:**
+
+| Before | After |
+|---|---|
+| `python app.py ask "where should I eat?"` | `python app.py ask "where should I eat?" --category Dining` |
+| `python app.py retrieve "laundry cost" --top-k 5` | `python app.py retrieve "laundry cost" --top-k 5 --source housing_innisfree_hall.txt` |
+| `curl -d '{"question": "..."}' /ask` | `curl -d '{"question": "...", "category": "Housing"}' /ask` |
+
+Both flags accept a comma-separated list (`--source a.txt,b.txt`) or, over the API, a JSON array (`"source": ["a.txt", "b.txt"]`) to match any of several values. Passing both `--source` and `--category` together requires a chunk to match both (`$and`), not either.
+
+**Null / no filter (the default case):** leaving `--source` and `--category` unset — which is every command that existed before this feature — produces `where=None`, and `search()` behaves exactly as it did before this was added. Nothing about un-filtered retrieval changed; this was the main thing I checked before considering it done.
+
+**Edge cases handled:**
+
+- **Unknown value** (typo'd filename, wrong category, wrong case) — `Chroma` would otherwise return zero rows silently, which is indistinguishable from the relevance gate refusing the question. `_resolve_filter` checks the value against the corpus's real sources/categories first and fails immediately with the full valid list, e.g. `Unknown category: Dinning. This corpus has: Admin, Course, Dining, Housing, ...`
+- **Valid filter, zero results** — a valid `--source` and a valid `--category` can still combine to match nothing (a dining file filtered to the `Admin` category). This isn't an error — both values are real — so `cmd_retrieve` prints a message that distinguishes it from "no index built yet": *"this combination matches no chunks at all"* rather than the generic no-index message.
+- **Valid filter, gate still refuses** — filtering can shrink the candidate pool below what the gate would normally see. If the best distance in the *filtered* pool is still over the threshold, the gate refuses exactly like it does today — filtering narrows what's searched, not the relevance bar an answer has to clear.
+- **`ask` vs. `retrieve`** — both commands and the `/ask` endpoint validate and apply filters the same way, so a bad value fails the same way everywhere instead of differently in the CLI vs. the API.
+- **Over HTTP specifically** — an unknown value raises the same validation error the CLI raises, but `serve.py` catches it and returns `400` with the message in JSON, instead of the CLI's `SystemExit` taking down the whole running service.
+
 ---
 # Unit 2
 
