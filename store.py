@@ -158,9 +158,15 @@ def build_index(
 
     collection = client.create_collection(
         name=name,
-        # ⚠️ Do not remove. Chroma defaults to squared L2, and every distance
-        # number in this course assumes cosine.
-        metadata={"hnsw:space": "cosine"},
+        metadata={
+            # ⚠️ Do not remove. Chroma defaults to squared L2, and every
+            # distance number in this course assumes cosine.
+            "hnsw:space": "cosine",
+            # Lets `search` catch a variant queried with the wrong model.
+            # Same-dimension model swaps (e.g. two MiniLM variants) don't
+            # error on their own — they just return meaningless neighbors.
+            "embedding_model": config.EMBEDDING_MODEL,
+        },
     )
 
     batch = 256
@@ -237,6 +243,15 @@ def search(
         raise RuntimeError(
             f"No index called '{name}'. Run `python app.py index` first."
         ) from exc
+
+    built_with = collection.metadata.get("embedding_model")
+    if built_with and built_with != config.EMBEDDING_MODEL:
+        raise RuntimeError(
+            f"Variant '{name}' was indexed with {built_with!r}, but "
+            f"config.EMBEDDING_MODEL is currently {config.EMBEDDING_MODEL!r}. "
+            f"Set AI201_EMBEDDING_MODEL={built_with!r} to query this variant, "
+            f"or rebuild it with the model you have set now."
+        )
 
     raw = collection.query(
         query_embeddings=embed([question]),

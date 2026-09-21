@@ -179,6 +179,64 @@ Over the CLI this needs nothing extra from you — the interactive loop already 
 - **Combined with metadata filtering** — `--source`/`--category` still apply to the *rewritten* retrieval query, not the raw follow-up, so filtering and following up work together correctly.
 - **Answer-referential follow-ups — a known gap, not something this handles:** "summarize that" or "which of those is cheapest," where the follow-up depends on the model's *previous answer* rather than the previous question, doesn't work. The rewrite step only ever sees Q&A pairs as text to condense into a new question — it has nothing to point back at literally.
 
+### A second embedding model — `multi-qa-MiniLM-L6-cos-v1`
+
+Swapped in `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` alongside the bundled `all-MiniLM-L6-v2`, indexed side by side using the starter's existing `variant` mechanism so neither index overwrites the other.
+
+**Why this model specifically:** same architecture and dimension count (384) as the bundled model, but trained on question–answer pairs instead of general sentence similarity. That isolates *training objective* as the one variable that changed, instead of also changing model size or dimensionality at the same time.
+
+**What I had to add:** `config.EMBEDDING_MODEL` now reads from `AI201_EMBEDDING_MODEL` (previously hardcoded), so switching models is one env var instead of hand-editing `config.py` and remembering to revert it. Because this model is same-dimension as the default, a query against the wrong variant wouldn't error — it would just silently return meaningless neighbors instead of failing. `store.py::build_index` now stamps `embedding_model` into the Chroma collection's own metadata, and `store.py::search` checks it before querying, raising a clear error instead of a quietly wrong answer:
+
+```
+RuntimeError: Variant 'campus_life__multi-qa' was indexed with 'multi-qa-MiniLM-L6-cos-v1',
+but config.EMBEDDING_MODEL is currently 'all-MiniLM-L6-v2'. Set
+AI201_EMBEDDING_MODEL='multi-qa-MiniLM-L6-cos-v1' to query this variant, or rebuild it
+with the model you have set now.
+```
+
+**Commands:**
+```
+pip install 'sentence-transformers>=3.4,<3.5'
+AI201_EMBEDDING_MODEL="multi-qa-MiniLM-L6-cos-v1" python app.py --variant multi-qa index
+AI201_EMBEDDING_MODEL="multi-qa-MiniLM-L6-cos-v1" python app.py --variant multi-qa ask "..."
+```
+
+**What moved, same 5 questions, both variants:**
+
+| Question | Default best (source) | multi-qa best (source) | What changed |
+|---|---|---|---|
+| How many hours a week for BIOL 160? | 0.330 | 0.308 | same top document, slightly closer |
+| Laundry cost in Aldridge Hall? | 0.243 | **0.136** | same top document, much closer — the biggest single move |
+| Shuttle on weekends? | 0.395 (`transit_shuttle.txt`) | 0.379 (`transit_shuttle.txt`) | same top document; #2/#3 reshuffled to different files |
+| Allergen-friendly dining hall? | 0.525 (`dining_pellew_dining_hall.txt`) | 0.539 (`dining_pellew_dining_hall_followup.txt`) | **top document flipped** to the sibling file, and `housing_tamsin_court.txt` — a non-dining document — entered the top 3 |
+| List of places to eat? | 0.484 (`dining_verrill_street_grill.txt`) | 0.564 (`dining_north_kitchen_followup.txt`) | **top document changed** and got farther; the same off-topic housing document appears in the top 3 again |
+
+The QA-tuned model sharpened single-fact lookups (laundry cost nearly halved in distance) but was no better — arguably worse — on the two questions that need aggregating across several dining documents, twice pulling in an unrelated housing document that never appeared in the default model's top 3 for either question.
+
+**The relevance gate also moved, as expected:** in-corpus distances now span 0.136–0.564 (was 0.243–0.525) and out-of-scope distances span 0.777–0.898 (was 0.826–0.916) — still a clean, non-overlapping gap, but narrower (≈0.21 vs. ≈0.30), so `THRESHOLD=0.6` would need to move to roughly 0.65–0.67 for this variant. More interesting than the gap shrinking: *which* out-of-scope question sits closest to the boundary changed entirely. Under the default model, "What is the capital of Mongolia?" (0.826) was riskiest; under multi-qa, "How do I write a for loop in Rust?" (0.777) is — the same question that was second-*farthest* from the boundary under the old model. Which refusal is hardest to get right isn't a fixed property of the question — it's a property of the embedding model.
+
+**Composes with both other stretch features, verified live, not just by reading the code:** ran a real two-turn conversation with a category filter applied, entirely on the `multi-qa` variant —
+
+```
+AI201_EMBEDDING_MODEL="multi-qa-MiniLM-L6-cos-v1" python app.py --variant multi-qa ask --category Housing
+
+> How much does laundry cost in Innisfree Hall?
+  (best distance 0.119, cutoff 0.6)
+  In Innisfree Hall, laundry costs $1.75 for a wash and $1.75 for a dry
+  (housing_innisfree_hall_laundry.txt and housing_innisfree_hall.txt).
+  Sources retrieved: [7 housing_*_laundry.txt files]
+
+> what about the noise?
+  (interpreting as: What is the noise level like in Innisfree Hall?)
+  (best distance 0.233, cutoff 0.6)
+  Noise levels in Innisfree Hall are moderate overall, with the building
+  being l-shaped and the short wing being much quieter
+  (housing_innisfree_hall_noise.txt).
+  Sources retrieved: [7 housing_*_noise.txt files]
+```
+
+The category filter held across both turns (every source is a Housing file), and the follow-up correctly rewrote to carry the Innisfree Hall context forward — both while running entirely on the new embedding model. This works by construction, not coincidence: `app.py::ask_pipeline` takes `variant`, `source`/`category`, and `history` as independent parameters that never touch each other's logic — the embedding model only decides what `store.search()` embeds the (rewritten) question with, the filter only shapes the Chroma `where` clause, and history only affects what gets rewritten and what the final prompt sees.
+
 ---
 # Unit 2
 
