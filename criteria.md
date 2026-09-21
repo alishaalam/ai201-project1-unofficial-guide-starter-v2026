@@ -23,8 +23,13 @@ For at least 4 of my 5 test questions, the retrieved chunks include one that
 contains the answer.
 
 **Why this target:**
-<!-- e.g. "One of my questions is about a topic only two documents mention, so
-     I expect that one to be hard." -->
+My five test questions aren't uniformly hard. Four of them ("BIOL 160 hours,"
+"Aldridge Hall laundry," "shuttle schedule," "allergen-friendly dining hall")
+each have their answer sitting in one or two source files. The fifth, "List of
+places to eat on campus," needs chunks from seven separate dining documents to
+be fully correct — the kind of aggregation question a single retrieval pass is
+more likely to miss one of. I expect that one to be the miss, which is why 4
+of 5 and not 5 of 5.
 
 ---
 
@@ -33,8 +38,12 @@ contains the answer.
 Every answer the system produces names at least one source document.
 
 **Why this target:**
-<!-- Why all five and not four? What about your setup makes that achievable —
-     or what would have to go wrong for it not to be? -->
+This isn't left to the model's memory — `app.py` appends the retrieved
+sources programmatically after generation (`Sources retrieved: ...`), rather
+than asking the LLM to cite honestly. Every answer runs through the same
+retrieval step before generation exists, so there's no code path that
+produces an answer with zero sources attached. That's a property of the
+pipeline, not a hope about model behavior, which is why I set this at 5 of 5.
 
 ---
 
@@ -50,8 +59,13 @@ in at least 4 of 5 tries.
      just keep five of them, or the "4 of 5" above has nothing to be 4 of. -->
 
 **Why this target:**
-<!-- What did your distances look like when you set the cutoff in Milestone 4?
-     Was there a clean gap, or did the two groups overlap? -->
+When I ran the calibration in Milestone 4, my five in-corpus questions landed
+between 0.243 and 0.525, and my five out-of-scope questions landed between
+0.826 and 0.916 — a clean gap of about 0.30 with nothing from either group
+inside it. Any cutoff in that gap (I used 0.6) would have separated all ten
+perfectly. I still set the target at 4 of 5 rather than 5 of 5 because that
+gap was measured on only five out-of-scope questions — I don't want to claim
+a perfect score on a boundary I've only tested from one side of that narrowly.
 
 ---
 
@@ -69,10 +83,19 @@ in at least 4 of 5 tries.
        - "No chunk is shorter than 200 characters, since anything below that
           in my corpus turned out to be a heading with no content under it." -->
 
-At least 4 of 5 sampled chunks contain a complete, understandable idea without cutting off important sentences, mixing unrelated topics and separating lists
+At least 4 of 5 sampled chunks start and end on a sentence boundary — none
+begins or ends mid-sentence — and no chunk mixes content from two different
+source categories (e.g., part Dining, part Housing).
 
 **Why this target:**
-Good chunks make retrieval more useful
+I set chunk size at 800 with 120 overlap specifically because most of my
+documents are short enough to fit inside one chunk without truncation —
+that's the whole reasoning behind the Chunking Strategy numbers in my README.
+So most sampled chunks should read as one complete document. The risk is the
+handful of longer documents (multi-section housing and course pages) that
+exceed 800 characters and have to split — those are the ones most likely to
+cut a sentence or a list, which is why I didn't set this at 5 of 5.
+
 ---
 
 ## 5. Your choice
