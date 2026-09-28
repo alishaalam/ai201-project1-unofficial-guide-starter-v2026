@@ -447,3 +447,29 @@ also double-check `expects` values in `questions.py` against the actual
 corpus at the time I wrote them — the "Innisfree Hall" error sat undetected
 through all of unit 1 because nothing forced me to verify it against the
 real dining-hall list until this unit's miss made me go look.
+
+## Stretch Feature — A Second Improvement
+
+**What I'm adding:** Tightening `generate.py::GROUNDING_INSTRUCTION`, the
+system prompt that governs generation, to explicitly allow counting or
+listing distinct named entities across the retrieved documents as a valid
+grounded answer — even when no single document states a total.
+
+**Why this one:** It's the exact fix named in "What's Still Broken" above,
+not a new idea reached for because it sounded impressive. After Milestone
+4's retrieval fix, the housing count question retrieves all 7 halls
+correctly, but still fails criterion 1: the current prompt's rule — "if the
+documents don't cover the question, say you don't have enough information"
+— reads "no document states a total" as "not covered," so the model
+refuses instead of counting the 7 distinct halls actually in front of it.
+This is a different stage (generation, not retrieval) and a different
+mechanism than Milestone 4's fix, so it's a genuinely second, distinct
+improvement, not a variation on the first — and it's the one thing this
+unit's diagnosis actually still points at.
+
+**How I'll measure it:** Same as Milestone 4 — the current system (after
+the category/top_k fix, before this prompt change) is the baseline; one
+line added to `GROUNDING_INSTRUCTION` is the only change; then all five
+questions, three runs each, before and after, same format.
+
+<!-- Results go here once the change is made and measured. -->
