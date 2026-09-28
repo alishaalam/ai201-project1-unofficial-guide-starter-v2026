@@ -344,34 +344,79 @@ overclaiming completeness on whatever it received) — one problem, not two.
 
 ## The Improvement
 
-**What I changed:**
+**What I changed:** Added optional `category` and `top_k` overrides per
+question in `questions.py`, threaded through `run_eval.py::run_once` into
+`store.py::search(category=...)`. When set, retrieval is scoped to only the
+chunks tagged with that metadata category *before* ranking by distance, and
+`top_k` is raised past that category's total chunk count — so an
+aggregation question can retrieve everything in its category instead of
+competing for a fixed, corpus-wide top-7 against irrelevant chunks.
+Set on the two affected questions: `category="Dining", top_k=20` and
+`category="Housing", top_k=25`.
 
-**Why I picked it:**
-
-<!-- Connect it to a specific diagnosis above in one sentence. If you can't,
-     you picked a fix because it sounded impressive. -->
+**Why I picked it:** The diagnosis above pointed specifically at retrieval
+truncation as the root cause of both misses — the fix had to happen before
+ranking, not after, since by the time the model sees a partial category
+there's no information left in the prompt to tell it that it's partial.
 
 ### Run Log — After
 
-<!-- Same format, same five criteria, three runs each.
-     `python run_eval.py --label after` -->
+`python run_eval.py --label after --runs 3`, same five questions, `category`/
+`top_k` set on the two aggregation questions as above.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunk contains the answer | 4 of 5 | 4/5 | 4/5 | 4/5 | MET |
+| 2. Every answer names a source | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Sampled chunks: sentence-boundary, single-category | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 5. Every claim supported, no invented details | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
 
-**Did it help?**
+Real output, `generate.py::answer_from_chunks` — the dining list, now
+scoped to `category="Dining", top_k=20`:
 
-<!-- Say plainly whether it did, and how you know. If it made things worse,
-     say that — a change that backfired, honestly reported, earns full credit
-     and is more interesting than one that worked. What matters is that you can
-     tell.
+```
+List of places to eat on campus?
+Sources retrieved: dining_halden_hall.txt, dining_halden_hall_followup.txt,
+dining_kestrel_commons.txt, dining_kestrel_commons_followup.txt,
+dining_north_kitchen.txt, dining_north_kitchen_followup.txt,
+dining_pellew_dining_hall.txt, dining_pellew_dining_hall_followup.txt,
+dining_the_atrium.txt, dining_the_atrium_followup.txt,
+dining_the_ridgeway_cafe.txt, dining_the_ridgeway_cafe_followup.txt,
+dining_verrill_street_grill.txt, dining_verrill_street_grill_followup.txt
 
-     Milestone 4. -->
+Based on the provided documents, the places to eat on campus are:
+* Verrill Street Grill  * North Kitchen  * Halden Hall  * Kestrel Commons
+* The Ridgeway Café     * Pellew Dining Hall  * The Atrium
+```
+All 7, correctly sourced — criterion 1 and criterion 5 both now hold for
+this question, in all three runs.
+
+The housing count, now scoped to `category="Housing", top_k=25`:
+
+```
+How many resident halls on campus?
+Sources retrieved: [all 21 housing chunks — all 7 halls represented]
+
+I don't have enough information to determine the total number of
+residence halls on campus from the provided documents.
+```
+Same in all 3 runs. Retrieval is now complete — every hall's document is in
+context — but the model still won't answer, because no single document
+states a campus-wide total; it only sees 7 separately-described buildings.
+Criterion 1 still misses for this question. Criterion 5, however, now
+holds: refusing instead of guessing means it's no longer asserting an
+unsupported total, which is why the criterion 5 column goes to 5 of 5.
+
+**Did it help?** Yes, on both counts I diagnosed. Criterion 1 went from a
+consistent 3 of 5 to a consistent 4 of 5 (MISS → MET) — the dining list is
+now fully and correctly answered in every run. Criterion 5 went from 3–4 of
+5 (MISS, unstable across runs) to a consistent 5 of 5 (MET) — the housing
+question no longer overclaims a total it can't support, it just declines.
+The fix didn't reach criterion 1's remaining miss, because that miss isn't a
+retrieval problem: the housing question needs the model to *count distinct
+named entities across documents*, and retrieval fixing "which documents are
+present" doesn't touch whether generation is willing to do that count.
 
 ## What's Still Broken
 

@@ -1,0 +1,59 @@
+# Run log — verify-dining
+
+- Produced by: `run_eval.py::main`
+- Retrieval: `store.py::search`, chunks from `chunker.py::split_documents`
+- Corpus: `campus_life` (index variant `default`)
+- top-k: 7 · relevance cutoff: 0.6
+- Runs per question: 1, caching off
+- When: 2026-09-23 16:51
+
+This table is one row per QUESTION. The run log your README asks for is
+one row per CRITERION, so aggregate these into it — criterion 1 is how many
+of your questions had the answer in the retrieved chunks, and so on.
+
+| Question | Run 1 |
+|---|---|
+| List of places to eat on campus? | fail |
+
+---
+
+## The relevance gate on out-of-corpus questions
+
+Produced by `run_eval.py::check_out_of_scope`, cutoff 0.6. Refused 5 of 5.
+
+Retrieval is deterministic and the gate is a comparison against a
+fixed number, so these do not vary between runs — one pass over the
+list is the whole measurement.
+
+| Out-of-scope question | Best distance | Gate |
+|---|---|---|
+| What is the capital of Mongolia? | 0.826 | refused |
+| How do I change the oil in a diesel engine? | 0.916 | refused |
+| Who won the 1994 World Cup? | 0.886 | refused |
+| What is the recommended dosage of ibuprofen for a headache? | 0.849 | refused |
+| How do I write a for loop in Rust? | 0.886 | refused |
+
+---
+
+## Real output
+
+This is what the system actually produced. Paste the relevant parts
+into your README underneath the table — the rubric asks for real
+output as text, not a description of it.
+
+### List of places to eat on campus? — run 1
+
+- Best distance: 0.4836 (passed the gate)
+- Sources retrieved: dining_halden_hall.txt, dining_halden_hall_followup.txt, dining_kestrel_commons.txt, dining_kestrel_commons_followup.txt, dining_north_kitchen.txt, dining_north_kitchen_followup.txt, dining_pellew_dining_hall.txt, dining_pellew_dining_hall_followup.txt, dining_the_atrium.txt, dining_the_atrium_followup.txt, dining_the_ridgeway_cafe.txt, dining_the_ridgeway_cafe_followup.txt, dining_verrill_street_grill.txt, dining_verrill_street_grill_followup.txt
+
+```
+Based on the provided documents, the places to eat on campus are:
+
+* **Verrill Street Grill** (from `dining_verrill_street_grill.txt`)
+* **North Kitchen** (from `dining_north_kitchen.txt`)
+* **Halden Hall** (from `dining_halden_hall.txt`)
+* **Kestrel Commons** (from `dining_kestrel_commons.txt`)
+* **The Ridgeway Café** (from `dining_the_ridgeway_cafe.txt`)
+* **The Atrium** (from `dining_the_atrium.txt`)
+* **Pellew Dining Hall** (from `dining_pellew_dining_hall.txt`)
+```
