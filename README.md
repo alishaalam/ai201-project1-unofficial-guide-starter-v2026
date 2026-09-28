@@ -308,22 +308,13 @@ are missing from both retrieval and the answer.)
 
 ## Verdicts
 
-<!-- MET or MISSED for each of the five, against the target you wrote last
-     unit — not a new one. Plus a sentence on how you decided. That sentence
-     matters most where it was close.
-
-     If your target said 4 of 5 and your runs came out 4, 3, 4, that's a MISS.
-     The target has to hold, not show up occasionally.
-
-     Milestone 2. -->
-
 | # | Criterion | Verdict | How I decided |
 |---|---|---|---|
-| 1 |  |  |  |
-| 2 |  |  |  |
-| 3 |  |  |  |
-| 4 |  |  |  |
-| 5 |  |  |  |
+| 1 | Retrieved chunk contains the answer | **MISSED** | Target was 4 of 5, held at 3/5 across all three runs — not a one-off. Two questions failed every time: the dining list (missing 2 of 7 halls) and the housing count (never produces "7"). |
+| 2 | Every answer names a source | **MET** | 5/5, all three runs. This is a property of `app.py`/`run_eval.py` (sources are attached from the retrieval result whenever the gate passes, regardless of what the model writes), so there's no code path that could produce a sourceless answer here. |
+| 3 | Gate stops out-of-corpus questions | **MET** | 5/5, refused every out-of-scope question, both before and after — unaffected by this unit's change since it touches retrieval scoping on in-corpus categories only. |
+| 4 | Sampled chunks: sentence-boundary, single-category | **MET** | Sampled 5 chunks directly via `chunker.py::split_documents` (`random.seed(7)`); all 5 are whole documents (longest in the corpus is 569 characters, under the 800-character `CHUNK_SIZE`), so none is split, none mixes categories, and each starts/ends exactly where its source document does — which is why this one holds regardless of my improvement. |
+| 5 | Every claim supported, no invented details | **MISSED** | Held at 4/5 in runs 2–3, but dropped to 3/5 in run 1 — the target has to hold across all three, so this is a miss. Run 1's housing answer asserted "**six** residence halls on campus" as if that were the total, when it was only reporting the 6 of 7 halls that happened to be retrieved — an unsupported completeness claim, even though every name in it was real. |
 
 ## Diagnoses
 
