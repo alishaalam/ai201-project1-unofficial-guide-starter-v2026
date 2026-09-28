@@ -472,4 +472,63 @@ the category/top_k fix, before this prompt change) is the baseline; one
 line added to `GROUNDING_INSTRUCTION` is the only change; then all five
 questions, three runs each, before and after, same format.
 
-<!-- Results go here once the change is made and measured. -->
+> **Measurement note.** `gemini-3.5-flash-lite` was down with a sustained
+> `503` ("high demand") for this entire session, and the account's
+> free-tier daily quota (20 requests/day/model) was exhausted testing
+> alternates. Both runs below substitute Claude (`claude-sonnet-5`) for the
+> final generation call — the real, unchanged pipeline
+> (`store.py::search`, `gate.py::check`, `generate.py::build_prompt`) feeds
+> it, and `generate.py::GROUNDING_INSTRUCTION` is exactly what's committed
+> to the repo at each point — but this is *not* the deployed system, and
+> the result below should not be read as a clean confirmation of the fix.
+> See "Did it help?" for why. Full logs:
+> `results/run_2026-09-28_0100_stretch-before-claude-substitute.md` and
+> `..._stretch-after-claude-substitute.md`.
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. Retrieved chunk contains the answer — **before** | 4 of 5 | 4/5 | 5/5 | 5/5 | MET |
+| 1. Retrieved chunk contains the answer — **after** | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 5. Every claim supported, no invented details — **before** | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 5. Every claim supported, no invented details — **after** | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+
+Real output — the housing count question, before (run 1, the one miss):
+
+```
+How many resident halls on campus?
+Based on the documents, there are seven residence halls: Aldridge Hall,
+Tamsin Court, Innisfree Hall, Old Brewhouse, Calder Annexe, Fenwick Court,
+and Morrow House (each described in their respective "what it's actually
+like" files, e.g., housing_aldridge_hall.txt, ...).
+```
+Scored a fail — `scorer.py::judge` requires the digit `"7"`, and this run
+spelled it as "seven." Substantively, every one of the 7 real halls is
+named correctly and nothing is invented; it's a scorer artifact, not the
+Gemini-style bug (asserting a wrong total from a partial set) this fix
+targets.
+
+After (all 3 runs, e.g. run 1):
+
+```
+How many resident halls on campus?
+Based on the documents, there are 7 residence halls: Aldridge Hall,
+Tamsin Court, Innisfree Hall, Old Brewhouse, Calder Annexe, Fenwick Court,
+and Morrow House (from housing_aldridge_hall.txt, ...).
+```
+
+**Did it help?** Barely, on this substitute — and that's the important
+finding. Claude's baseline ("before," unmodified prompt) already named all
+7 halls correctly in every run; the only miss was a digit-vs-word scorer
+technicality, not the failure this fix targets. Unlike Gemini — which, in
+Milestone 4's real `after` run, refused the housing question outright in
+all 3 runs even with every hall correctly retrieved — Claude never
+exhibited the underlying flaw (treating "no document states a total" as
+"not answerable") the grounding-prompt change is meant to fix. So this
+measurement mostly shows the change causes **no regressions** across all
+five questions on a different model, plus it stabilizes the one
+inconsistent digit/word phrasing — it does **not** confirm the fix solves
+the actual diagnosed problem, because the model used here never had that
+problem. That can only be confirmed by re-running on the real system
+(`gemini-3.5-flash-lite`) once the outage clears or the daily quota
+resets — `python run_eval.py --label stretch-after` will do it, no code
+changes needed since the fix is already committed.
