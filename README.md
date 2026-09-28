@@ -318,23 +318,29 @@ are missing from both retrieval and the answer.)
 
 ## Diagnoses
 
-<!-- For each miss: which stage caused it, and how. The stage alone isn't
-     enough — you need the mechanism.
+**One root cause behind both misses.** Criterion 1's two failing questions
+and criterion 5's two flagged answers are the same two questions, and the
+same mechanism: **retrieval**, not generation, first.
 
-     Not a diagnosis: "Question 3 didn't work."
-     A diagnosis:     "Question 3 asks about laundry costs. The answer is in
-                       one sentence that got split across two chunks, so
-                       neither chunk on its own contains it."
+- `store.py::search` was called with the global `top_k=7` and no category
+  scope. The corpus has 14 dining chunks (7 halls × main + followup file)
+  and 21 housing chunks (7 halls × main + laundry + noise file). A flat
+  top-7 nearest-neighbor search over the whole corpus returns *some* of a
+  category, capped by whatever else in the corpus happens to embed close to
+  the question — for "list of places to eat," that cut 2 of 7 dining halls;
+  for "how many resident halls," it kept 6 of 7 halls and, on the seventh
+  slot, pulled in an irrelevant chunk (`study_group_rooms.txt`) instead of
+  the missing hall's document (Morrow House).
+- Generation then compounded it. Handed a *partial* set of a category with
+  no signal that it was partial, the model didn't hedge — it presented
+  whatever subset it got as if it were the whole answer ("the places to eat
+  on campus are: [5 of 7]", "there are six residence halls on campus").
+  That's the criterion 5 miss: not fabricated names, but an unsupported
+  claim of completeness the retrieved chunks never actually established.
 
-     The five stages: loading → chunking → embedding → retrieval → generation.
-
-     Look for a pattern. If three misses all ask about numbers, that's one
-     problem, not three.
-
-     Missed nothing? Say so, then say honestly whether your targets were set
-     low, and which one you'd tighten and to what.
-
-     Milestone 3. -->
+Both misses trace to the same stage (retrieval truncating an aggregation
+category before ranking) producing the same downstream symptom (generation
+overclaiming completeness on whatever it received) — one problem, not two.
 
 ## The Improvement
 

@@ -51,13 +51,24 @@ def load_scorer():
     return judge if callable(judge) else None
 
 
-def run_once(question: str, top_k, threshold, corpus, variant):
-    """One question, one run. Returns the answer and what retrieval gave us."""
+def run_once(question: str, top_k, threshold, corpus, variant, category=None):
+    """One question, one run. Returns the answer and what retrieval gave us.
+
+    `category` scopes retrieval to one metadata category before ranking (see
+    `store.py::search`). It's for questions that ask to count or list every
+    member of a category ("How many resident halls...", "List of places to
+    eat..."): vector top-k ranks by similarity, not by "have I found all of
+    them," so once a category has more members than `top_k`, some are cut
+    for no reason related to the question. Set `category` (and raise `top_k`
+    past that category's size) on that question in `questions.py` rather than
+    raising `top_k` globally — a global bump just as easily drowns a
+    single-fact question in irrelevant chunks instead.
+    """
     from store import search
     import gate
     from generate import answer_from_chunks
 
-    results = search(question, top_k=top_k, corpus=corpus, variant=variant)
+    results = search(question, top_k=top_k, corpus=corpus, variant=variant, category=category)
     decision = gate.check(results, threshold=threshold)
 
     if not decision.passed:
@@ -76,6 +87,11 @@ def main():
     parser.add_argument("--variant", default="default")
     parser.add_argument("--top-k", type=int, default=None)
     parser.add_argument("--threshold", type=float, default=None)
+    parser.add_argument(
+        "--question",
+        default=None,
+        help="only run questions containing this substring (case-insensitive)",
+    )
     args = parser.parse_args()
 
     corpus = args.corpus or config.CORPUS
@@ -90,6 +106,13 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
+
+    if args.question:
+        needle = args.question.lower()
+        items = [item for item in items if needle in item.get("question", "").lower()]
+        if not items:
+            print(f"No question in questions.py matches --question {args.question!r}.", file=sys.stderr)
+            sys.exit(1)
 
     judge = load_scorer()
     if judge is None:
@@ -107,10 +130,13 @@ def main():
         expects = item.get("expects", "")
         print(f"\n{question}")
 
+        item_top_k = item.get("top_k") or top_k
+        item_category = item.get("category")
+
         run_results = []
         for run in range(1, args.runs + 1):
             answer, results, decision = run_once(
-                question, top_k, threshold, corpus, args.variant
+                question, item_top_k, threshold, corpus, args.variant, category=item_category
             )
             passed = judge(question, expects, answer, results) if judge else None
             run_results.append(passed)
