@@ -121,6 +121,8 @@ My in-corpus questions all landed between 0.243 and 0.525. My out-of-scope quest
 
 4. I asked how to add conversational memory (below) "the right way, the way a real system would do it." The design that came back used two model calls — rewrite the follow-up into a standalone question for retrieval, then answer using the real conversation — because retrieval and generation need different inputs: the vector index has no idea what "it" refers to, but the model writing the answer should see the actual conversation so it doesn't sound like a fresh, disconnected reply. What got built the first pass was a simplified version of that — the rewritten question fed *both* retrieval and the final answer, dropping the raw conversation entirely. I didn't catch that myself; Claude flagged the deviation unprompted at the end of its own implementation summary, and I asked for the original two-input design instead. Fixing it surfaced a second, smaller bug in the same area: my `HISTORY_TURNS` cap in `config.py` was only being applied inside the rewrite call, not to the history now also going into the final answer prompt — so a long conversation would have grown that prompt, and its cost, without bound, despite the config comment next to it claiming otherwise. That got caught and fixed in the same pass, not because I asked for it directly, but because asking for the redesign exposed it.
 
+5. For unit 2, I had Claude run the before/after evals and look for the pattern across my misses rather than treating each failing question as its own bug. It's what caught that criterion 1 (dining list + housing count both failing) and criterion 5 (the housing answer claiming "six residence halls" as a total) were the *same* underlying failure, not two: `store.py::search` was capped at a flat `top_k=7` with no category scope, so an aggregation question competed with the whole corpus for a fixed number of slots, and whatever partial subset of a category it got back, generation presented as complete instead of hedging. That's what pointed at scoping retrieval by `category` (plus raising `top_k` past that category's size) as the one fix, instead of something less targeted like just raising the global top-k, which would have diluted single-fact questions to fix an aggregation-only problem. It also caught, after the fix, that the housing question's remaining failure had moved stages — from a retrieval gap to the model simply refusing to count entities across documents — which is why that miss stayed in "What's Still Broken" rather than getting bundled into the same fix.
+
 ## Stretch Features
 
 ### Metadata filtering — narrow by source or category
@@ -420,17 +422,28 @@ present" doesn't touch whether generation is willing to do that count.
 
 ## What's Still Broken
 
-<!-- For each criterion still missed after your fix: what you'd do about it,
-     and why you stopped where you did.
-
-     "I ran out of time" is fine if it's true. Pretending nothing is left is
-     not.
-
-     Milestone 5. -->
+**Criterion 1, the housing count question.** All 7 halls are in context and
+correctly retrieved, but `generate.py`'s grounding instruction has the model
+treat "not explicitly stated" as "not answerable," so it refuses to count 7
+distinct residence-hall documents into "7 residence halls." Next step would
+be a generation-stage change — telling the model in `GROUNDING_INSTRUCTION`
+that counting or listing distinct named entities across the retrieved
+documents is a valid basis for an answer, not just quoting a stated fact —
+but that's a second system change, and this unit's rule is one change per
+unit. I'm leaving it diagnosed but unfixed rather than stacking a second fix
+onto this unit's result.
 
 ## What I'd Do Differently
 
-<!-- Knowing what you know now — which of your five criteria would you write
-     differently, and why?
-
-     Milestone 5. -->
+I'd write criterion 1's original five questions to include at least one
+count/aggregation question from the start, rather than discovering in this
+unit that four of the five original questions (BIOL hours, laundry cost,
+shuttle schedule, allergen dining hall) were all single-fact lookups that
+could never have exposed the retrieval-truncation bug — only the one
+"list of places to eat" question ever touched it, and it took swapping in a
+second aggregation question (the housing count) to reveal that the bug was
+systematic (a category-size problem) rather than one unlucky question. I'd
+also double-check `expects` values in `questions.py` against the actual
+corpus at the time I wrote them — the "Innisfree Hall" error sat undetected
+through all of unit 1 because nothing forced me to verify it against the
+real dining-hall list until this unit's miss made me go look.
