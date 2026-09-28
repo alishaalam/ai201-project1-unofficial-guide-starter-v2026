@@ -25,9 +25,9 @@ QUESTIONS = [
     # {"question": "...", "expects": "..."},
     {"question": "How many hours a week should I expect for BIOL 160?", "expects": "9 to 11 hours"},
     {"question": "How much does laundry cost in Aldridge Hall?", "expects": "$1.75"},
-    {"question": "How often does the campus shuttle run on weekends?", "expects": "40 minutes"},
+    {"question": "How many resident halls on campus?", "expects": "7"},
     {"question": "Which Dining hall supports people with allergen sensitivities?", "expects": "Pellew Dining Hall"},
-    {"question": "List of places to eat on campus?", "expects": "Halden Hall, North Kitchen, Pellew Dining Hall, Ridgeway Cafe, Kestrel Commons, Innisfree Hall, VerriLL Street Grill"},
+    {"question": "List of places to eat on campus?", "expects": "Halden Hall, North Kitchen, Pellew Dining Hall, Ridgeway Cafe, Kestrel Commons, The Atrium, Verrill Street Grill"},
 ]
 
 # Questions from a different world entirely. Your gate should refuse all five.

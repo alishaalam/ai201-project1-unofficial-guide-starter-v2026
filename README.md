@@ -246,27 +246,65 @@ The category filter held across both turns (every source is a Housing file), and
 
 ## Run Log — Before
 
-<!-- Your five criteria, three runs each. `python run_eval.py --label before`
-     runs the questions, puts the OUT_OF_SCOPE ones through the gate, and
-     writes it all into results/ for you. Targets come from criteria.md; the
-     verdict column is your call.
+> **Methodology note.** Two test-data corrections were made to `questions.py`
+> before this unit's baseline was run, neither of which is "the improvement"
+> (Milestone 4) — both are fixes to broken test data, not to the system:
+> - The "list of places to eat" `expects` value from unit 1 named **"Innisfree
+>   Hall"** as a dining hall — that's actually a residence hall
+>   (`housing_innisfree_hall.txt`), a data-entry error, not a real answer the
+>   system could ever be scored correct against. It's now the 7 real dining
+>   halls (added **The Atrium**, which unit 1's list omitted entirely).
+> - The **shuttle schedule** question (always passed cleanly, 3/3, every run
+>   it was ever tried) was swapped for **"How many resident halls on
+>   campus?"** — a second aggregation/count question alongside the dining
+>   list, since the shuttle question wasn't exposing anything and criterion 1
+>   only had one question that tested "gather every member of a category" at
+>   all. This turned out to matter: it's what surfaced the generation-stage
+>   bug described below, which the original five questions never would have.
+>
+> Both runs below (`results/run_2026-09-27_2114_before.md` and
+> `results/run_2026-09-27_2116_after.md`) use the corrected five questions,
+> so the comparison is apples-to-apples — the *only* thing that differs
+> between the two runs is the improvement itself (see below).
 
-     Criterion 3 is measured in one deterministic pass rather than three, so
-     the same number goes in all three run columns. That's correct, not lazy.
-
-     Milestone 1. -->
+`python run_eval.py --label before --runs 3`, top-k 7, cutoff 0.6, no
+`category` scoping on any question.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunk contains the answer | 4 of 5 | 3/5 | 3/5 | 3/5 | MISSED |
+| 2. Every answer names a source | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Sampled chunks: sentence-boundary, single-category | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 5. Every claim supported, no invented details | 4 of 5 | 3/5 | 4/5 | 4/5 | MISSED |
 
-<!-- Underneath, paste the REAL output for each criterion from one of your
-     runs — the actual text your system produced, not a description of it.
-     Name the file and function that produced it. -->
+Real output, `generate.py::answer_from_chunks` — the two failing questions,
+criterion 1 run 1:
+
+```
+How many resident halls on campus?
+Sources retrieved: housing_aldridge_hall.txt, housing_calder_annexe.txt,
+housing_fenwick_court.txt, housing_innisfree_hall.txt,
+housing_old_brewhouse.txt, housing_tamsin_court.txt, study_group_rooms.txt
+
+Based on the provided documents, there are six residence halls mentioned
+on campus: Aldridge Hall, Tamsin Court, Innisfree Hall, Old Brewhouse,
+Calder Annexe, and Fenwick Court.
+```
+
+```
+List of places to eat on campus?
+Sources retrieved: dining_halden_hall.txt, dining_kestrel_commons.txt,
+dining_north_kitchen.txt, dining_north_kitchen_followup.txt,
+dining_the_ridgeway_cafe.txt, dining_verrill_street_grill.txt,
+housing_tamsin_court.txt
+
+Based on the provided documents, the places to eat on campus are:
+- Verrill Street Grill, North Kitchen, Halden Hall, Kestrel Commons,
+  The Ridgeway Café
+```
+(The corpus actually has 7 dining halls; Pellew Dining Hall and The Atrium
+are missing from both retrieval and the answer.)
 
 ## Verdicts
 

@@ -45,6 +45,11 @@ rank-bm25>=0.2.2,<0.3
 # instead of a command that exits. That's serve.py.
 flask>=3.0,<3.2
 
+# Fuzzy string matching for scorer.py's judge(). Lets "expects" phrases match
+# an answer despite small wording/formatting differences (e.g. "9-11 hours"
+# vs "9 to 11 hours") without needing an exact substring.
+rapidfuzz>=3.9,<3.11
+
 # Unit 9 only, and unused before then. The server Flask starts for you is a
 # development server and says so out loud; this is the one you actually deploy
 # behind. Installed now so unit 9 is a command, not a dependency problem.
